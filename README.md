@@ -15,8 +15,8 @@
    ```text
    BepInEx/
    └── plugins/
+       ├── CompanionRoleplay.dll
        └── CompanionRoleplay/
-           ├── CompanionRoleplay.dll
            └── Poses/
                ├── Carrier_Default.txt (or .json)
                └── Carried_Default.txt (or .json)
