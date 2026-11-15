@@ -48,17 +48,35 @@ namespace CompanionRoleplay
         }
     }
 
-    // Принудительно включаем режим шага (как при зажатом Ctrl) и блокируем спринт, когда игрок несёт компаньонку
-    [HarmonyPatch(typeof(Player), "Update")]
-    public static class PlayerSprintPatch
+    // Принудительно включаем режим шага и блокируем спринт у игрока во время переноски
+    [HarmonyPatch(typeof(ThirdPersonCharacter), "Move")]
+    public static class PlayerWalkMovePatch
     {
         [HarmonyPrefix]
-        public static void Prefix(Player __instance)
+        public static void Prefix(ThirdPersonCharacter __instance, ref Vector3 move, ref bool crouch, ref bool jump)
         {
-            if (CarryManager.IsCarrying)
+            if (!CarryManager.IsCarrying || Player.code == null)
+                return;
+
+            // Применяем только к игроку, чтобы не затронуть NPC
+            if (__instance.gameObject != Player.code.gameObject)
+                return;
+
+            // Отключаем спринт на персонаже игрока
+            Player.code.sprinting = false;
+            if (Player.code.customization != null)
             {
-                PMC_Input.Walk = true;
-                __instance.sprinting = false;
+                Player.code.customization.Unsprint();
+            }
+
+            // Включаем режим шага (параметр walk/crouch в ThirdPersonCharacter) и убираем прыжок при переноске
+            crouch = true;
+            jump = false;
+
+            // На случай если скорость в ThirdPersonCharacter зависит от магнитуды вектора move
+            if (move.sqrMagnitude > 0.25f)
+            {
+                move = move.normalized * 0.5f;
             }
         }
     }
