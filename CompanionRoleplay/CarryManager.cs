@@ -207,6 +207,69 @@ namespace CompanionRoleplay
             StartCoroutine(CheckPlayerNextFrames());
         }
 
+        /// <summary>
+        /// Освобождает компаньонку с рук и сразу передаёт её мебельному взаимодействию.
+        /// </summary>
+        public CharacterCustomization ReleaseToFurniture(Furniture furniture)
+        {
+            if (!IsCarrying) return null;
+
+            CharacterCustomization companion = _carriedCompanion;
+
+            if (_playerBoneDriver != null) _playerBoneDriver.StopPlayback();
+            if (_companionBoneDriver != null) _companionBoneDriver.StopPlayback();
+
+            if (furniture != null)
+            {
+                companion.transform.position = furniture.transform.position;
+            }
+
+            if (_companionAnimator != null) _companionAnimator.enabled = true;
+
+            foreach (var state in _savedRigidbodies)
+            {
+                if (state.rb != null)
+                {
+                    state.rb.velocity = Vector3.zero;
+                    state.rb.angularVelocity = Vector3.zero;
+                    state.rb.isKinematic = state.isKinematic;
+                    state.rb.interpolation = state.interpolation;
+                }
+            }
+            _savedRigidbodies.Clear();
+
+            foreach (var col in _disabledColliders)
+            {
+                if (col != null) col.enabled = true;
+            }
+            _disabledColliders.Clear();
+
+            if (_companionCharCtrl != null) _companionCharCtrl.enabled = true;
+
+            if (_companionAgent != null)
+            {
+                _companionAgent.enabled = true;
+                _companionAgent.Warp(companion.transform.position);
+                _companionAgent.ResetPath();
+                _companionAgent.isStopped = false;
+            }
+
+            if (_nativeCompanionScript != null)
+            {
+                _nativeCompanionScript.enabled = true;
+            }
+
+            ToggleCompanionEmotionsScripts(companion, true);
+
+            Plugin.Log.LogInfo($"[CarryManager] Компаньонка {companion.name} передана на мебель: {(furniture != null ? furniture.name : "null")}");
+
+            _carriedCompanion = null;
+            _attachAnchor = null;
+            _nativeCompanionScript = null;
+
+            return companion;
+        }
+
         private System.Collections.IEnumerator CheckPlayerNextFrames()
         {
             yield return null;

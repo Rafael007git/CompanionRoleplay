@@ -8,7 +8,7 @@ using static System.Runtime.CompilerServices.RuntimeHelpers;
 
 namespace CompanionRoleplay
 {
-    [BepInPlugin("com.user.companionroleplay", "Companion Roleplay", "0.1.2")]
+    [BepInPlugin("com.user.companionroleplay", "Companion Roleplay", "0.1.3")]
     public class Plugin : BaseUnityPlugin
     {
         public static ManualLogSource Log;
@@ -42,7 +42,20 @@ namespace CompanionRoleplay
 
             // Затем применяем патчи
             Harmony harmony = new Harmony("com.user.companionroleplay");
-            harmony.PatchAll();
+            foreach (var type in System.Reflection.Assembly.GetExecutingAssembly().GetTypes())
+            {
+                if (type.GetCustomAttributes(typeof(HarmonyPatch), true).Length > 0)
+                {
+                    try
+                    {
+                        harmony.CreateClassProcessor(type).Patch();
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Log.LogError($"[Harmony] Не удалось применить патч {type.Name}: {ex.Message}");
+                    }
+                }
+            }
 
             Log.LogInfo("CompanionRoleplay 0.1.0 успешно загружен!");
         }
