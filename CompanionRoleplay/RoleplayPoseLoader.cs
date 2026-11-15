@@ -215,16 +215,8 @@ namespace CompanionRoleplay
 
         public void StopPlayback()
         {
-            if (_boneMap != null && _initialPositions != null)
-            {
-                foreach (var kvp in _initialPositions)
-                {
-                    if (_boneMap.TryGetValue(kvp.Key, out Transform bone) && bone != null)
-                        bone.localPosition = kvp.Value;
-                }
-            }
-
             _animData = null;
+            _initialPositions?.Clear();
             enabled = false;
         }
 

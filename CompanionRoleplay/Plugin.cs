@@ -8,7 +8,7 @@ using static System.Runtime.CompilerServices.RuntimeHelpers;
 
 namespace CompanionRoleplay
 {
-    [BepInPlugin("com.user.companionroleplay", "Companion Roleplay", "0.1.1")]
+    [BepInPlugin("com.user.companionroleplay", "Companion Roleplay", "0.1.2")]
     public class Plugin : BaseUnityPlugin
     {
         public static ManualLogSource Log;

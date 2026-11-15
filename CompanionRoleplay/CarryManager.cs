@@ -142,6 +142,8 @@ namespace CompanionRoleplay
             if (!IsCarrying) return;
 
             Transform p = Player.code != null ? Player.code.transform : null;
+            Plugin.Log.LogInfo($"[TeleCheck] 0. Start StopCarry: Player={p?.position}");
+
             Vector3 dropPos = _carriedCompanion.transform.position;
             Quaternion dropRot = _carriedCompanion.transform.rotation;
 
@@ -153,6 +155,7 @@ namespace CompanionRoleplay
 
             if (_playerBoneDriver != null) _playerBoneDriver.StopPlayback();
             if (_companionBoneDriver != null) _companionBoneDriver.StopPlayback();
+            Plugin.Log.LogInfo($"[TeleCheck] 1. After BoneDriver: Player={p?.position}");
 
             _carriedCompanion.transform.position = dropPos;
             _carriedCompanion.transform.rotation = dropRot;
@@ -186,20 +189,32 @@ namespace CompanionRoleplay
                 _companionAgent.ResetPath();
                 _companionAgent.isStopped = false;
             }
+            Plugin.Log.LogInfo($"[TeleCheck] 2. After Physics/Agent: Player={p?.position}");
 
             if (_nativeCompanionScript != null)
             {
                 _nativeCompanionScript.enabled = true;
             }
+            Plugin.Log.LogInfo($"[TeleCheck] 3. After NativeCompanion.enabled: Player={p?.position}");
 
             ToggleCompanionEmotionsScripts(_carriedCompanion, true);
-
-            Plugin.Log.LogInfo($"[CarryManager] Игрок отпустил компаньонку: {_carriedCompanion.name} в точке {dropPos}");
+            Plugin.Log.LogInfo($"[TeleCheck] 4. After EmotionsScripts: Player={p?.position}");
 
             _carriedCompanion = null;
             _attachAnchor = null;
             _nativeCompanionScript = null;
+
+            StartCoroutine(CheckPlayerNextFrames());
         }
+
+        private System.Collections.IEnumerator CheckPlayerNextFrames()
+        {
+            yield return null;
+            Plugin.Log.LogInfo($"[TeleCheck] 5. Next Update: Player={Player.code?.transform.position}");
+            yield return new WaitForFixedUpdate();
+            Plugin.Log.LogInfo($"[TeleCheck] 6. Next FixedUpdate: Player={Player.code?.transform.position}");
+        }
+
 
         private void ToggleCompanionEmotionsScripts(CharacterCustomization companion, bool state)
         {
