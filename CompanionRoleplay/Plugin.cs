@@ -8,7 +8,7 @@ using static System.Runtime.CompilerServices.RuntimeHelpers;
 
 namespace CompanionRoleplay
 {
-    [BepInPlugin("com.user.companionroleplay", "Companion Roleplay", "0.1.0")]
+    [BepInPlugin("com.user.companionroleplay", "Companion Roleplay", "0.1.1")]
     public class Plugin : BaseUnityPlugin
     {
         public static ManualLogSource Log;
@@ -30,30 +30,34 @@ namespace CompanionRoleplay
             GrabDistance = Config.Bind("Controls", "GrabDistance", 2.0f,
                 "Максимальная дистанция (на расстоянии вытянутой руки) для взаимодействия с компаньонкой.");
 
-            CarryLocalPosOffset = Config.Bind("CarryOffsets", "LocalPositionOffset", new Vector3(0f, -0.15f, 0.28f),
+            CarryLocalPosOffset = Config.Bind("CarryOffsets", "LocalPositionOffset", new Vector3(0f, -1f, 0f),
                 "Локальное смещение кости hip компаньонки относительно chestUpper игрока.");
 
-            CarryLocalRotOffset = Config.Bind("CarryOffsets", "LocalRotationOffset", new Vector3(0f, 90f, 0f),
+            CarryLocalRotOffset = Config.Bind("CarryOffsets", "LocalRotationOffset", new Vector3(0f, 0f, 0f),
                 "Локальный поворот кости hip компаньонки относительно chestUpper игрока (в градусах).");
 
-            Harmony harmony = new Harmony("com.user.companionroleplay");
-            harmony.PatchAll();
-
+            // Сначала регистрируем компоненты UI и CarryManager
             gameObject.AddComponent<RoleplayMenuUI>();
             gameObject.AddComponent<CarryManager>();
+
+            // Затем применяем патчи
+            Harmony harmony = new Harmony("com.user.companionroleplay");
+            harmony.PatchAll();
 
             Log.LogInfo("CompanionRoleplay 0.1.0 успешно загружен!");
         }
     }
 
+    // Принудительно включаем режим шага (как при зажатом Ctrl) и блокируем спринт, когда игрок несёт компаньонку
     [HarmonyPatch(typeof(Player), "Update")]
     public static class PlayerSprintPatch
     {
-        [HarmonyPostfix]
-        public static void Postfix(Player __instance)
+        [HarmonyPrefix]
+        public static void Prefix(Player __instance)
         {
-            if (CarryManager.IsCarrying && __instance.sprinting)
+            if (CarryManager.IsCarrying)
             {
+                PMC_Input.Walk = true;
                 __instance.sprinting = false;
             }
         }

@@ -1,19 +1,28 @@
-﻿using System;
+﻿using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace CompanionRoleplay
 {
     public class RoleplayMenuUI : MonoBehaviour
     {
-        private bool _isMenuOpen;
+        private GameObject _customPanel;
         private CharacterCustomization _targetCompanion;
-        private Rect _windowRect = new Rect(0, 0, 240, 140);
+
+        private bool IsMenuOpen => _customPanel != null && _customPanel.activeSelf;
 
         private void Update()
         {
+            // Пока меню открыто, гарантируем свободный курсор
+            if (IsMenuOpen)
+            {
+                Cursor.visible = true;
+                Cursor.lockState = CursorLockMode.None;
+            }
+
             if (Input.GetKeyDown(Plugin.InteractionKey.Value))
             {
-                if (_isMenuOpen)
+                if (IsMenuOpen)
                 {
                     CloseMenu();
                     return;
@@ -35,51 +44,110 @@ namespace CompanionRoleplay
 
         private void OpenMenu(CharacterCustomization companion)
         {
-            _targetCompanion = companion;
-            _isMenuOpen = true;
-            _windowRect.x = (Screen.width - _windowRect.width) * 0.5f;
-            _windowRect.y = (Screen.height - _windowRect.height) * 0.5f;
+            if (Global.code == null || Global.code.uiCombat == null || Global.code.uiCombat.interactionOptionsPanel == null)
+            {
+                Plugin.Log.LogError("[RoleplayMenuUI] Global.code.uiCombat.interactionOptionsPanel недоступен!");
+                return;
+            }
 
-            Cursor.visible = true;
-            Cursor.lockState = CursorLockMode.None;
+            _targetCompanion = companion;
+
+            if (_customPanel == null)
+            {
+                BuildNativePanel();
+            }
+
+            if (_customPanel != null)
+            {
+                _customPanel.SetActive(true);
+                Cursor.visible = true;
+                Cursor.lockState = CursorLockMode.None;
+            }
         }
 
         private void CloseMenu()
         {
-            _isMenuOpen = false;
+            if (_customPanel != null)
+            {
+                _customPanel.SetActive(false);
+            }
             _targetCompanion = null;
 
             Cursor.visible = false;
             Cursor.lockState = CursorLockMode.Locked;
         }
 
-        private void OnGUI()
+        private void BuildNativePanel()
         {
-            if (!_isMenuOpen || _targetCompanion == null) return;
+            GameObject origPanel = Global.code.uiCombat.interactionOptionsPanel;
+            _customPanel = Instantiate(origPanel, origPanel.transform.parent);
+            _customPanel.name = "CompanionRoleplayOptionsPanel";
 
-            _windowRect = GUI.Window(94821, _windowRect, DrawMenuWindow, _targetCompanion.name);
-        }
+            // Собираем все дочерние кнопки шаблона
+            List<Transform> children = new List<Transform>();
+            for (int i = 0; i < _customPanel.transform.childCount; i++)
+            {
+                children.Add(_customPanel.transform.GetChild(i));
+            }
 
-        private void DrawMenuWindow(int id)
-        {
-            GUILayout.Space(8);
+            if (children.Count == 0) return;
 
-            if (GUILayout.Button("Carry", GUILayout.Height(34)))
+            // Первую кнопку настраиваем как "CARRY"
+            Transform carryBtnTrans = children[0];
+            SetupOptionButton(carryBtnTrans, "CARRY", () =>
             {
                 CharacterCustomization target = _targetCompanion;
                 CloseMenu();
-                CarryManager.Instance.StartCarry(target);
-            }
+                if (target != null)
+                {
+                    CarryManager.Instance.StartCarry(target);
+                }
+            });
 
-            GUILayout.Space(6);
+            // Вторую кнопку (или клон первой) настраиваем как "CLOSE"
+            Transform closeBtnTrans = children.Count > 1
+                ? children[1]
+                : Instantiate(carryBtnTrans, _customPanel.transform);
 
-            if (GUILayout.Button("Cancel", GUILayout.Height(26)))
+            SetupOptionButton(closeBtnTrans, "CLOSE", CloseMenu);
+
+            // Все остальные кнопки из шаблона (RELOCATE, DESTROY и т.д.) скрываем/удаляем
+            for (int i = 2; i < children.Count; i++)
             {
-                CloseMenu();
+                Destroy(children[i].gameObject);
             }
         }
 
-        // Логика поиска ближайшей видимой цели в пределах дистанции вытянутой руки
+        private void SetupOptionButton(Transform btnTransform, string label, UnityEngine.Events.UnityAction onClickAction)
+        {
+            btnTransform.gameObject.SetActive(true);
+
+            // Отключаем локализатор, чтобы игра не перезаписывала наш текст
+            LocalizationText locText = btnTransform.GetComponentInChildren<LocalizationText>();
+            if (locText != null)
+            {
+                locText.enabled = false;
+            }
+
+            Text txt = btnTransform.GetComponentInChildren<Text>();
+            if (txt != null)
+            {
+                txt.text = label;
+            }
+
+            Button btn = btnTransform.GetComponent<Button>();
+            if (btn != null)
+            {
+                // Отключаем старые persistent-события из инспектора Unity и очищаем динамические
+                for (int i = 0; i < btn.onClick.GetPersistentEventCount(); i++)
+                {
+                    btn.onClick.SetPersistentListenerState(i, UnityEngine.Events.UnityEventCallState.Off);
+                }
+                btn.onClick.RemoveAllListeners();
+                btn.onClick.AddListener(onClickAction);
+            }
+        }
+
         private CharacterCustomization FindNearestVisibleCompanion(float maxDistance)
         {
             Camera cam = Camera.main;
@@ -120,6 +188,5 @@ namespace CompanionRoleplay
 
             return bestTarget;
         }
-
     }
 }

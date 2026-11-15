@@ -1,11 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Reflection;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 
 namespace CompanionRoleplay
 {
+    [DefaultExecutionOrder(20000)]
     public class CarryManager : MonoBehaviour
     {
         public static CarryManager Instance { get; private set; }
@@ -13,16 +12,21 @@ namespace CompanionRoleplay
         public static CharacterCustomization CarriedCompanion => Instance?._carriedCompanion;
 
         private CharacterCustomization _carriedCompanion;
-        private Transform _companionHip;
-        private Transform _originalHipParent;
-        private Vector3 _originalHipLocalPos;
-        private Quaternion _originalHipLocalRot;
+        private Transform _originalCompanionParent;
 
         private Animator _companionAnimator;
         private NavMeshAgent _companionAgent;
         private CharacterController _companionCharCtrl;
         private readonly List<Collider> _disabledColliders = new List<Collider>();
         private readonly List<Behaviour> _disabledAiScripts = new List<Behaviour>();
+
+        private struct SavedRigidbodyState
+        {
+            public Rigidbody rb;
+            public bool isKinematic;
+            public RigidbodyInterpolation interpolation;
+        }
+        private readonly List<SavedRigidbodyState> _savedRigidbodies = new List<SavedRigidbodyState>();
 
         private RoleplayBoneDriver _playerBoneDriver;
         private RoleplayBoneDriver _companionBoneDriver;
@@ -36,10 +40,10 @@ namespace CompanionRoleplay
         private void LateUpdate()
         {
             // Позволяет подстраивать смещение прямо в рантайме через конфиг
-            if (IsCarrying && _companionHip != null)
+            if (IsCarrying && _carriedCompanion != null)
             {
-                _companionHip.localPosition = Plugin.CarryLocalPosOffset.Value;
-                _companionHip.localRotation = Quaternion.Euler(Plugin.CarryLocalRotOffset.Value);
+                _carriedCompanion.transform.localPosition = Plugin.CarryLocalPosOffset.Value;
+                _carriedCompanion.transform.localRotation = Quaternion.Euler(Plugin.CarryLocalRotOffset.Value);
             }
         }
 
@@ -50,25 +54,13 @@ namespace CompanionRoleplay
 
             Transform playerRoot = Player.code.transform;
             var playerBones = RoleplayPoseLoader.BuildBoneMap(playerRoot);
-            var compBones = RoleplayPoseLoader.BuildBoneMap(companion.transform);
 
-            if (!playerBones.TryGetValue("chestUpper", out Transform playerChestUpper))
-            {
-                Plugin.Log.LogError("[CarryManager] Не найдена кость chestUpper у игрока!");
-                return false;
-            }
-
-            if (!compBones.TryGetValue("hip", out Transform compHip))
-            {
-                Plugin.Log.LogError($"[CarryManager] Не найдена кость hip у компаньонки {companion.name}!");
-                return false;
-            }
+            Transform attachAnchor = playerBones.TryGetValue("chestUpper", out Transform playerChestUpper)
+                ? playerChestUpper
+                : playerRoot;
 
             _carriedCompanion = companion;
-            _companionHip = compHip;
-            _originalHipParent = compHip.parent;
-            _originalHipLocalPos = compHip.localPosition;
-            _originalHipLocalRot = compHip.localRotation;
+            _originalCompanionParent = companion.transform.parent;
 
             // 1. Отключаем движение, навигацию и физику компаньонки
             _companionAgent = companion.GetComponent<NavMeshAgent>();
@@ -81,6 +73,21 @@ namespace CompanionRoleplay
             _companionCharCtrl = companion.GetComponent<CharacterController>();
             if (_companionCharCtrl != null) _companionCharCtrl.enabled = false;
 
+            // Переводим все Rigidbody в кинематический режим без интерполяции
+            _savedRigidbodies.Clear();
+            foreach (var rb in companion.GetComponentsInChildren<Rigidbody>(true))
+            {
+                if (rb == null) continue;
+                _savedRigidbodies.Add(new SavedRigidbodyState
+                {
+                    rb = rb,
+                    isKinematic = rb.isKinematic,
+                    interpolation = rb.interpolation
+                });
+                rb.isKinematic = true;
+                rb.interpolation = RigidbodyInterpolation.None;
+            }
+
             _disabledColliders.Clear();
             foreach (var col in companion.GetComponentsInChildren<Collider>(true))
             {
@@ -91,19 +98,19 @@ namespace CompanionRoleplay
                 }
             }
 
-            // 2. Ставим на паузу AI/эмоции из CompanionEmotionsMod (если установлены)
+            // 2. Ставим на паузу AI/эмоции из CompanionEmotionsMod
             ToggleCompanionEmotionsScripts(companion, false);
 
-            // 3. Отключаем штатный Animator компаньонки и сажаем hip на chestUpper игрока
+            // 3. Отключаем штатный Animator компаньонки и привязываем к chestUpper игрока
             _companionAnimator = companion.GetComponentInChildren<Animator>();
             if (_companionAnimator != null) _companionAnimator.enabled = false;
 
-            _companionHip.SetParent(playerChestUpper, false);
-            _companionHip.localPosition = Plugin.CarryLocalPosOffset.Value;
-            _companionHip.localRotation = Quaternion.Euler(Plugin.CarryLocalRotOffset.Value);
+            companion.transform.SetParent(attachAnchor, false);
+            companion.transform.localPosition = Plugin.CarryLocalPosOffset.Value;
+            companion.transform.localRotation = Quaternion.Euler(Plugin.CarryLocalRotOffset.Value);
 
-            // 4. Запускаем позу/анимацию "меня несут" на компаньонке (все кости)
-            var carriedPose = RoleplayPoseLoader.LoadPoseOrAnimation("Carried_Default.json");
+            // 4. Запускаем позу/анимацию "меня несут" на компаньонке
+            var carriedPose = RoleplayPoseLoader.LoadPoseOrAnimation("Carried_Default");
             if (carriedPose != null)
             {
                 _companionBoneDriver = companion.gameObject.GetComponent<RoleplayBoneDriver>()
@@ -112,7 +119,7 @@ namespace CompanionRoleplay
             }
 
             // 5. Запускаем позу/анимацию переноски на игроке (ТОЛЬКО верхняя часть тела)
-            var carrierPose = RoleplayPoseLoader.LoadPoseOrAnimation("Carrier_Default.json");
+            var carrierPose = RoleplayPoseLoader.LoadPoseOrAnimation("Carrier_Default");
             if (carrierPose != null)
             {
                 _playerBoneDriver = playerRoot.gameObject.GetComponent<RoleplayBoneDriver>()
@@ -131,15 +138,8 @@ namespace CompanionRoleplay
             if (_playerBoneDriver != null) _playerBoneDriver.StopPlayback();
             if (_companionBoneDriver != null) _companionBoneDriver.StopPlayback();
 
-            // Возвращаем hip компаньонки в её родную иерархию скелета
-            if (_companionHip != null && _originalHipParent != null)
-            {
-                _companionHip.SetParent(_originalHipParent, false);
-                _companionHip.localPosition = _originalHipLocalPos;
-                _companionHip.localRotation = _originalHipLocalRot;
-            }
+            _carriedCompanion.transform.SetParent(_originalCompanionParent, true);
 
-            // Ставим компаньонку аккуратно перед игроком
             if (Player.code != null)
             {
                 Transform p = Player.code.transform;
@@ -148,6 +148,16 @@ namespace CompanionRoleplay
             }
 
             if (_companionAnimator != null) _companionAnimator.enabled = true;
+
+            foreach (var state in _savedRigidbodies)
+            {
+                if (state.rb != null)
+                {
+                    state.rb.isKinematic = state.isKinematic;
+                    state.rb.interpolation = state.interpolation;
+                }
+            }
+            _savedRigidbodies.Clear();
 
             foreach (var col in _disabledColliders)
             {
@@ -167,8 +177,7 @@ namespace CompanionRoleplay
             Plugin.Log.LogInfo($"[CarryManager] Игрок отпустил компаньонку: {_carriedCompanion.name}");
 
             _carriedCompanion = null;
-            _companionHip = null;
-            _originalHipParent = null;
+            _originalCompanionParent = null;
         }
 
         private void ToggleCompanionEmotionsScripts(CharacterCustomization companion, bool state)
