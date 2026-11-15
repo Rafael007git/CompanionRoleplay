@@ -12,11 +12,12 @@ namespace CompanionRoleplay
         public static CharacterCustomization CarriedCompanion => Instance?._carriedCompanion;
 
         private CharacterCustomization _carriedCompanion;
-        private Transform _originalCompanionParent;
+        private Transform _attachAnchor;
 
         private Animator _companionAnimator;
         private NavMeshAgent _companionAgent;
         private CharacterController _companionCharCtrl;
+        private Companion _nativeCompanionScript;
         private readonly List<Collider> _disabledColliders = new List<Collider>();
         private readonly List<Behaviour> _disabledAiScripts = new List<Behaviour>();
 
@@ -39,11 +40,11 @@ namespace CompanionRoleplay
 
         private void LateUpdate()
         {
-            // Позволяет подстраивать смещение прямо в рантайме через конфиг
-            if (IsCarrying && _carriedCompanion != null)
+            // Синхронизируем мировую позицию и поворот напрямую от якоря (chestUpper), без SetParent!
+            if (IsCarrying && _carriedCompanion != null && _attachAnchor != null)
             {
-                _carriedCompanion.transform.localPosition = Plugin.CarryLocalPosOffset.Value;
-                _carriedCompanion.transform.localRotation = Quaternion.Euler(Plugin.CarryLocalRotOffset.Value);
+                _carriedCompanion.transform.position = _attachAnchor.TransformPoint(Plugin.CarryLocalPosOffset.Value);
+                _carriedCompanion.transform.rotation = _attachAnchor.rotation * Quaternion.Euler(Plugin.CarryLocalRotOffset.Value);
             }
         }
 
@@ -55,14 +56,13 @@ namespace CompanionRoleplay
             Transform playerRoot = Player.code.transform;
             var playerBones = RoleplayPoseLoader.BuildBoneMap(playerRoot);
 
-            Transform attachAnchor = playerBones.TryGetValue("chestUpper", out Transform playerChestUpper)
+            _attachAnchor = playerBones.TryGetValue("chestUpper", out Transform playerChestUpper)
                 ? playerChestUpper
                 : playerRoot;
 
             _carriedCompanion = companion;
-            _originalCompanionParent = companion.transform.parent;
 
-            // 1. Отключаем движение, навигацию и физику компаньонки
+            // 1. Отключаем навигацию и контроллер столкновений компаньонки
             _companionAgent = companion.GetComponent<NavMeshAgent>();
             if (_companionAgent != null && _companionAgent.enabled)
             {
@@ -72,6 +72,13 @@ namespace CompanionRoleplay
 
             _companionCharCtrl = companion.GetComponent<CharacterController>();
             if (_companionCharCtrl != null) _companionCharCtrl.enabled = false;
+
+            // Отключаем родной скрипт Companion на время переноски, чтобы он не пытался возвращать её назад
+            _nativeCompanionScript = companion.GetComponent<Companion>();
+            if (_nativeCompanionScript != null && _nativeCompanionScript.enabled)
+            {
+                _nativeCompanionScript.enabled = false;
+            }
 
             // Переводим все Rigidbody в кинематический режим без интерполяции
             _savedRigidbodies.Clear();
@@ -101,13 +108,12 @@ namespace CompanionRoleplay
             // 2. Ставим на паузу AI/эмоции из CompanionEmotionsMod
             ToggleCompanionEmotionsScripts(companion, false);
 
-            // 3. Отключаем штатный Animator компаньонки и привязываем к chestUpper игрока
+            // 3. Отключаем штатный Animator компаньонки и сразу ставим её на якорь
             _companionAnimator = companion.GetComponentInChildren<Animator>();
             if (_companionAnimator != null) _companionAnimator.enabled = false;
 
-            companion.transform.SetParent(attachAnchor, false);
-            companion.transform.localPosition = Plugin.CarryLocalPosOffset.Value;
-            companion.transform.localRotation = Quaternion.Euler(Plugin.CarryLocalRotOffset.Value);
+            companion.transform.position = _attachAnchor.TransformPoint(Plugin.CarryLocalPosOffset.Value);
+            companion.transform.rotation = _attachAnchor.rotation * Quaternion.Euler(Plugin.CarryLocalRotOffset.Value);
 
             // 4. Запускаем позу/анимацию "меня несут" на компаньонке
             var carriedPose = RoleplayPoseLoader.LoadPoseOrAnimation("Carried_Default");
@@ -127,7 +133,7 @@ namespace CompanionRoleplay
                 _playerBoneDriver.StartPlayback(carrierPose, upperBodyOnly: true);
             }
 
-            Plugin.Log.LogInfo($"[CarryManager] Игрок взял на руки компаньонку: {companion.name}");
+            Plugin.Log.LogInfo($"[CarryManager] Игрок взял на руки компаньонку: {companion.name} в точке {playerRoot.position}");
             return true;
         }
 
@@ -135,17 +141,21 @@ namespace CompanionRoleplay
         {
             if (!IsCarrying) return;
 
+            Transform p = Player.code != null ? Player.code.transform : null;
+            Vector3 dropPos = _carriedCompanion.transform.position;
+            Quaternion dropRot = _carriedCompanion.transform.rotation;
+
+            if (p != null)
+            {
+                dropPos = p.position + p.forward * 1.1f + Vector3.up * 0.1f;
+                dropRot = Quaternion.LookRotation(-p.forward);
+            }
+
             if (_playerBoneDriver != null) _playerBoneDriver.StopPlayback();
             if (_companionBoneDriver != null) _companionBoneDriver.StopPlayback();
 
-            _carriedCompanion.transform.SetParent(_originalCompanionParent, true);
-
-            if (Player.code != null)
-            {
-                Transform p = Player.code.transform;
-                _carriedCompanion.transform.position = p.position + p.forward * 0.85f;
-                _carriedCompanion.transform.rotation = Quaternion.LookRotation(-p.forward);
-            }
+            _carriedCompanion.transform.position = dropPos;
+            _carriedCompanion.transform.rotation = dropRot;
 
             if (_companionAnimator != null) _companionAnimator.enabled = true;
 
@@ -153,6 +163,8 @@ namespace CompanionRoleplay
             {
                 if (state.rb != null)
                 {
+                    state.rb.velocity = Vector3.zero;
+                    state.rb.angularVelocity = Vector3.zero;
                     state.rb.isKinematic = state.isKinematic;
                     state.rb.interpolation = state.interpolation;
                 }
@@ -166,18 +178,27 @@ namespace CompanionRoleplay
             _disabledColliders.Clear();
 
             if (_companionCharCtrl != null) _companionCharCtrl.enabled = true;
+
             if (_companionAgent != null)
             {
                 _companionAgent.enabled = true;
+                _companionAgent.Warp(dropPos);
+                _companionAgent.ResetPath();
                 _companionAgent.isStopped = false;
+            }
+
+            if (_nativeCompanionScript != null)
+            {
+                _nativeCompanionScript.enabled = true;
             }
 
             ToggleCompanionEmotionsScripts(_carriedCompanion, true);
 
-            Plugin.Log.LogInfo($"[CarryManager] Игрок отпустил компаньонку: {_carriedCompanion.name}");
+            Plugin.Log.LogInfo($"[CarryManager] Игрок отпустил компаньонку: {_carriedCompanion.name} в точке {dropPos}");
 
             _carriedCompanion = null;
-            _originalCompanionParent = null;
+            _attachAnchor = null;
+            _nativeCompanionScript = null;
         }
 
         private void ToggleCompanionEmotionsScripts(CharacterCustomization companion, bool state)
