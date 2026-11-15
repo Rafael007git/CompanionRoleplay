@@ -32,13 +32,6 @@
 ## 🗺️ To-Do & Roadmap
 
 ### Short-Term / Polishing
-- [ ] **Fine tune the default poses in Free Pose:** 
-- [ ] **Test JSON animation instead of a ES2 pose:** 
-- [ ] **Megamorph: fix changing offset when carried by a person with scaled up/down body:** 
-- [ ] **When Target is already interacting with furniture "Grab" option should change to "Release"** 
-- [ ] **Carry Pose Selector Submenu:** Add a secondary selection menu when choosing `Carry` to switch between multiple carrying styles (over-the-shoulder, princess carry, etc.).
-
-### Short-Term / Polishing
 - [ ] **Fine-tune Default Poses in Free Pose:** Adjust shoulder, arm, neck and head alignment and torso angle in the in-game pose editor for seamless clipping-free carrying.
 - [ ] **Multi-Keyframe JSON Animations:** Test and add dynamic `.json` carrying animations (swaying or struggling) alongside static `ES2` poses.
 - [ ] **Megamorph Scale Compensation:** Dynamically adjust carry position offsets based on the carrier's body scale so characters with scaled-up or scaled-down proportions hold companions accurately.
