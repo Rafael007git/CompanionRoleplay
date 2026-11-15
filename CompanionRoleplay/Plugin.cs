@@ -25,16 +25,16 @@ namespace CompanionRoleplay
             Log = Logger;
 
             InteractionKey = Config.Bind("Controls", "InteractionKey", KeyCode.G,
-                "Горячая клавиша для открытия меню взаимодействия с компаньонкой или её отпускания.");
+                "Hotkey to open the companion interaction menu or put down a carried companion.");
 
             GrabDistance = Config.Bind("Controls", "GrabDistance", 2.0f,
-                "Максимальная дистанция (на расстоянии вытянутой руки) для взаимодействия с компаньонкой.");
+                "Maximum interaction distance (within arm's reach) to target a companion.");
 
-            CarryLocalPosOffset = Config.Bind("CarryOffsets", "LocalPositionOffset", new Vector3(0f, -1f, 0f),
-                "Локальное смещение кости hip компаньонки относительно chestUpper игрока.");
+            CarryLocalPosOffset = Config.Bind("CarryOffsets", "LocalPositionOffset", new Vector3(0.20f, -1.00f, -0.02f),
+                "Local position offset of the carried companion relative to the carrier's chestUpper bone.");
 
-            CarryLocalRotOffset = Config.Bind("CarryOffsets", "LocalRotationOffset", new Vector3(0f, 0f, 0f),
-                "Локальный поворот кости hip компаньонки относительно chestUpper игрока (в градусах).");
+            CarryLocalRotOffset = Config.Bind("CarryOffsets", "LocalRotationOffset", new Vector3(0.00f, 0.00f, -1.00f),
+                "Local rotation offset of the carried companion relative to the carrier's chestUpper bone (in degrees).");
 
             // Сначала регистрируем компоненты UI и CarryManager
             gameObject.AddComponent<RoleplayMenuUI>();
